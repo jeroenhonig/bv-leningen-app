@@ -1,5 +1,4 @@
-**BV Leningen App
-**
+## BV Leningen App
 Een complete applicatie voor het beheren van leningen in uw BV, inclusief betaling tracking, jaaroverzichten en dashboard visualisaties.
 
 ## Gemakkelijke installatie op Proxmox
