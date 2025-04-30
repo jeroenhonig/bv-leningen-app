@@ -17,7 +17,7 @@ get_next_ctid() {
         used_ids=$(pct list | awk 'NR>1 {print $1}')
     fi
 
-    while echo "$used_ids" | grep -qw "$id"; do
+    while echo "$used_ids" | grep -q "^$id$"; do
         ((id++))
     done
 
