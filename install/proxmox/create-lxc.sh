@@ -8,13 +8,12 @@ set -euxo pipefail
 get_next_ctid() {
     local id=100
     local used_ids
-    used_ids=$(pvesh get /cluster/resources --type vm | awk '/vmid/ {gsub(/[^0-9]/, "", $2); print $2}')
+    used_ids=$(pvesh get /cluster/resources --type vm | awk '{print $1}' | cut -d/ -f2 | grep -E '^[0-9]+$')
     while echo "$used_ids" | grep -qw "$id"; do
         ((id++))
     done
     echo "$id"
 }
-
 
 # Bepaal vrij CTID via cluster
 CTID="$(get_next_ctid)"
