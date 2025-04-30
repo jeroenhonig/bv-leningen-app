@@ -2,8 +2,21 @@
 # Script voor het aanmaken van een Alpine Linux LXC container voor BV Leningen App
 # Uitvoeren op de Proxmox host
 
+set -euo pipefail
+
+# Functie om eerstvolgende vrije CTID te bepalen
+get_next_ctid() {
+    local existing_ids
+    existing_ids=$(pct list | awk 'NR>1 {print $1}' | sort -n)
+    local id=100
+    while echo "$existing_ids" | grep -q "^$id$"; do
+        ((id++))
+    done
+    echo "$id"
+}
+
 # Configuratie
-CTID=${1:-100}                  # Container ID, standaard 100
+CTID=${1:-$(get_next_ctid)}     # Container ID, standaard eerstvolgend vrij
 HOSTNAME=${2:-leningen-app}     # Hostname, standaard leningen-app
 MEM=${3:-512}                   # Geheugen in MB, standaard 512
 DISK=${4:-8}                    # Disk size in GB, standaard 8GB
