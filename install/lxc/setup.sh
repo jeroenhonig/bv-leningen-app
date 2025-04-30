@@ -180,4 +180,19 @@ else
   echo "❌  Geen response van backend — check ‘pm2 logs’"
 fi
 
+###############################################################################
+# 14. (Re-)set and show TurnKey root password
+###############################################################################
+# ──────────────────────────────────────────────────────────────────────────────
+# If you want a random one each time:
+NEW_ROOT_PASS="$(openssl rand -base64 12)"
+# Or hard-code your own (less secure):
+# NEW_ROOT_PASS="MySafePassword123!"
+
+# Apply it:
+echo "root:${NEW_ROOT_PASS}" | chpasswd
+
+# And remind the user:
+echo -e "\n🔑  TurnKey root password is: ${NEW_ROOT_PASS}\n"
+
 echo -e "\n🎉  Installatie voltooid. Web: http://$(hostname -I | awk '{print $1}')  ✨"
