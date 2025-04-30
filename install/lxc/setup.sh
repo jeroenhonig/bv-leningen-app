@@ -117,7 +117,7 @@ fi
 
 # 9. Nginx configuratie
 echo "9. Nginx configureren..."
-cat > /etc/nginx/conf.d/leningen-app.conf << EOL2
+cat > /etc/nginx/http.d/leningen-app.conf << EOL2
 server {
     listen 80 default_server;
     server_name _;
@@ -177,84 +177,21 @@ chmod +x /opt/backups/backup.sh
 apk add dcron
 rc-update add dcron default
 rc-service dcron start
-echo "0 2 * * * /opt/backups/backup.sh" | crontab -
+echo "0 3 * * * /opt/backups/backup.sh" | crontab -
 
-# 11. Firewall setup
-echo "11. Firewall configureren..."
-apk add iptables ip6tables
-
-cat > /etc/local.d/firewall.start << EOL2
-#!/bin/sh
-# Reset iptables
-iptables -F
-iptables -X
-
-# Standaard policy
-iptables -P INPUT DROP
-iptables -P FORWARD DROP
-iptables -P OUTPUT ACCEPT
-
-# Sta loopback toe
-iptables -A INPUT -i lo -j ACCEPT
-
-# Sta gerelateerde en gevestigde verbindingen toe
-iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-
-# Sta SSH toe
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-
-# Sta HTTP toe
-iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-
-# IPv6 beleid
-ip6tables -P INPUT DROP
-ip6tables -P FORWARD DROP
-ip6tables -P OUTPUT ACCEPT
-EOL2
-chmod +x /etc/local.d/firewall.start
-
-# 12. Startup configuratie
-echo "12. Autostart configureren..."
-cat > /etc/local.d/leningen-app.start << EOL2
-#!/bin/sh
-# Start PostgreSQL als het nog niet draait
-if ! rc-service postgresql status > /dev/null 2>&1; then
-  rc-service postgresql start
-fi
-
-# Start de backend applicatie met PM2
-if [ -d "$APP_DIR/repo/backend" ]; then
-  cd $APP_DIR/repo/backend
-  pm2 start ecosystem.config.js || echo "PM2 kon niet starten"
-fi
-
-# Start Nginx als het nog niet draait
-if ! rc-service nginx status > /dev/null 2>&1; then
-  rc-service nginx start
-fi
-exit 0
-EOL2
-chmod +x /etc/local.d/leningen-app.start
-rc-update add local default
-
-# 13. Start services
-echo "13. Services starten..."
-/etc/local.d/firewall.start
-/etc/local.d/leningen-app.start
+# 11. Start services
+echo "11. Services starten..."
+cd "$APP_DIR/repo/backend"
+pm2 start ecosystem.config.js || echo "PM2 kon niet starten"
 rc-service nginx restart
 
-# 14. PM2 startup
-echo "14. PM2 configureren voor autostart..."
+# 12. PM2 startup
+echo "12. PM2 configureren voor autostart..."
 env PATH=$PATH:/usr/bin pm2 startup -u root || echo "PM2 startup mislukt"
 pm2 save || echo "PM2 save mislukt"
 
-# 15. Beveiligingsoptimalisatie
-echo "15. Beveiligingsoptimalisatie uitvoeren..."
-sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config
-rc-service sshd restart
-
-# 16. PostgreSQL optimalisatie
-echo "16. PostgreSQL optimaliseren voor kleine container..."
+# 13. PostgreSQL optimalisatie
+echo "13. PostgreSQL optimaliseren voor kleine container..."
 su - postgres -c "sed -i 's/^shared_buffers =.*/shared_buffers = 32MB/g' /var/lib/postgresql/data/postgresql.conf"
 su - postgres -c "sed -i 's/^#effective_cache_size =.*/effective_cache_size = 96MB/g' /var/lib/postgresql/data/postgresql.conf"
 su - postgres -c "sed -i 's/^#work_mem =.*/work_mem = 4MB/g' /var/lib/postgresql/data/postgresql.conf"

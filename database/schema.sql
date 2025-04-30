@@ -3,7 +3,6 @@
 -- Leningen tabel
 CREATE TABLE IF NOT EXISTS leningen (
   id SERIAL PRIMARY KEY,
-  lening_id VARCHAR(255) UNIQUE NOT NULL,
   kredietverstrekker VARCHAR(255) NOT NULL,
   type VARCHAR(100) NOT NULL,
   startdatum DATE NOT NULL,
@@ -20,8 +19,7 @@ CREATE TABLE IF NOT EXISTS leningen (
 -- Betalingen tabel
 CREATE TABLE IF NOT EXISTS betalingen (
   id SERIAL PRIMARY KEY,
-  betaling_id VARCHAR(255) UNIQUE NOT NULL,
-  lening_id VARCHAR(255) NOT NULL REFERENCES leningen(lening_id) ON DELETE CASCADE,
+  lening_id INTEGER NOT NULL REFERENCES leningen(id) ON DELETE CASCADE,
   datum DATE NOT NULL,
   termijnbedrag DECIMAL(15, 2) NOT NULL,
   aflossing DECIMAL(15, 2) NOT NULL,
