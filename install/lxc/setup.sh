@@ -1,3 +1,5 @@
+# Maak het opgeschoonde script aan in de container
+pct exec 102 -- bash -c "cat > /root/setup-clean.sh <<'EOF'
 #!/usr/bin/env bash
 # Debian-slim install script for the **BV Leningen App** inside an LXC container
 # - Tested on Debian 12 (bookworm-slim) template
@@ -20,7 +22,7 @@ PG_CONF_OVERRIDES=(
 
 echo "==========  BV Leningen App install  $(date)  =========="
 
-log() { echo -e "\n\e[1;34m$*\e[0m"; }
+log() { echo -e \"\n\e[1;34m\$*\e[0m\"; }
 
 ###############################################################################
 # 1. Base system update
@@ -48,7 +50,7 @@ pg_ctlcluster 15 main start || true
 log "3. Node.js installeren"
 apt-get install -y -qq curl gnupg ca-certificates
 if ! command -v node >/dev/null; then
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_VERSION}.x" | bash -
+  curl -fsSL "https://deb.nodesource.com/setup_\${NODE_VERSION}.x" | bash -
   apt-get install -y -qq nodejs
 fi
 
@@ -66,10 +68,10 @@ systemctl enable --now nginx
 ###############################################################################
 log "5. Applicatie clonen"
 apt-get install -y -qq git
-mkdir -p "$APP_DIR"
-cd "$APP_DIR"
+mkdir -p "\$APP_DIR"
+cd "\$APP_DIR"
 if [ ! -d repo/.git ]; then
-  git clone "https://github.com/${REPO}.git" repo
+  git clone "https://github.com/\${REPO}.git" repo
 else
   (cd repo && git pull --ff-only)
 fi
@@ -80,22 +82,22 @@ fi
 log "6. Database configureren"
 
 # 6a. Role aanmaken (negeer "already exists")
-su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';\" || true"
+su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE ROLE \${DB_USER} WITH LOGIN PASSWORD '\${DB_PASS}';\" || true"
 
 # 6b. Database aanmaken (negeer "database already exists")
-su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};\" || true"
+su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE DATABASE \${DB_NAME} OWNER \${DB_USER};\" || true"
 
 # ---- schema importeren, alleen als het nog niet staat ---------------------
-su - postgres -c "psql -d ${DB_NAME} -tAc \
-  \"SELECT 1 FROM information_schema.tables WHERE table_name = 'lening'\"" \
-  | grep -q 1 || \
-  su - postgres -c "psql -d ${DB_NAME} -f ${APP_DIR}/repo/database/schema.sql"
+su - postgres -c "psql -d \${DB_NAME} -tAc \\
+  \"SELECT 1 FROM information_schema.tables WHERE table_name = 'lening'\"" \\
+  | grep -q 1 || \\
+  su - postgres -c "psql -d \${DB_NAME} -f \${APP_DIR}/repo/database/schema.sql"
 
 ###############################################################################
 # 7. Backend dependencies (prod-only)  
 ###############################################################################
 log "7. Backend dependencies installeren"
-cd "$APP_DIR/repo/backend"
+cd "\$APP_DIR/repo/backend"
 # ci i.p.v. install voor repeatability, alleen runtime deps
 npm ci --omit=dev
 
@@ -103,7 +105,7 @@ npm ci --omit=dev
 # 8. Front-end build
 ###############################################################################
 log "8. Front-end builden"
-cd "$APP_DIR/repo/frontend"
+cd "\$APP_DIR/repo/frontend"
 npm ci  # dev-deps nodig om te builden
 npm run build
 
@@ -112,7 +114,7 @@ npm run build
 ###############################################################################
 log "9. Nginx configureren"
 rm -rf /var/www/html/*
-cp -r "$APP_DIR/repo/frontend/build"/* /var/www/html/
+cp -r "\$APP_DIR/repo/frontend/build"/* /var/www/html/
 
 # Optioneel: eenvoudige reverse-proxy zodat /api traffic naar backend gaat
 cat >/etc/nginx/conf.d/leningen-app.conf <<'NGINX'
@@ -122,13 +124,13 @@ server {
 
     # serveer je SPA
     root /var/www/html;
-    try_files $uri /index.html;
+    try_files \$uri /index.html;
 
     # proxy /api/* naar je backend
     location /api/ {
         proxy_pass http://127.0.0.1:3000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
 }
 NGINX
@@ -148,7 +150,7 @@ systemctl enable --now cron
 log "11. PM2 installeren & backend starten"
 if ! command -v pm2 >/dev/null; then npm install -g pm2; fi
 pm2 startup systemd -u root --hp /root --silent
-cd "$APP_DIR/repo/backend"
+cd "\$APP_DIR/repo/backend"
 # kijk eerst welk bestand er echt is
 if [ -f index.js ]; then
   pm2 start index.js --name leningen-backend --time --update-env
@@ -164,9 +166,9 @@ pm2 save
 # 12. PostgreSQL fine-tuning (enkel 1x toevoegen)
 ###############################################################################
 log "12. PostgreSQL tweaken"
-PGCONF=$(find /etc/postgresql -name postgresql.conf | head -n1)
-for line in "${PG_CONF_OVERRIDES[@]}"; do
-  grep -q "^${line%% *}" "$PGCONF" || echo "$line" >> "$PGCONF"
+PGCONF=\$(find /etc/postgresql -name postgresql.conf | head -n1)
+for line in "\${PG_CONF_OVERRIDES[@]}"; do
+  grep -q "^\${line%% *}" "\$PGCONF" || echo "\$line" >> "\$PGCONF"
 done
 pg_ctlcluster 15 main reload
 
@@ -184,14 +186,21 @@ fi
 # 14. (Re-)set and show TurnKey root password
 ###############################################################################
 # Als je elke keer een nieuw wachtwoord wilt:
-NEW_ROOT_PASS="$(openssl rand -base64 12)"
+NEW_ROOT_PASS="\$(openssl rand -base64 12)"
 # Of gebruik je eigen (minder veilig):
 # NEW_ROOT_PASS="MySafePassword123!"
 
 # Toepassen:
-echo "root:${NEW_ROOT_PASS}" | chpasswd
+echo "root:\${NEW_ROOT_PASS}" | chpasswd
 
 # En herinner de gebruiker:
-echo -e "\n🔑 TurnKey root password is: ${NEW_ROOT_PASS}\n"
+echo -e "\n🔑 TurnKey root password is: \${NEW_ROOT_PASS}\n"
 
-echo -e "\n✅ Installatie voltooid. Web: http://$(hostname -I | awk '{print $1}') !"
+echo -e "\n✅ Installatie voltooid. Web: http://\$(hostname -I | awk '{print \$1}') !"
+EOF"
+
+# Maak het script uitvoerbaar
+pct exec 102 -- bash -c "chmod +x /root/setup-clean.sh"
+
+# Voer het schone script uit
+pct exec 102 -- bash -c "/root/setup-clean.sh"
