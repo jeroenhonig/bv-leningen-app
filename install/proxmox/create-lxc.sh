@@ -6,10 +6,8 @@ set -euo pipefail
 
 # Functie om eerstvolgende vrije CTID te bepalen
 get_next_ctid() {
-    local existing_ids
-    existing_ids=$(pct list | awk 'NR>1 {print $1}' | sort -n)
     local id=100
-    while echo "$existing_ids" | grep -q "^$id$"; do
+    while pct list | awk 'NR>1 {print $1}' | grep -qw "$id"; do
         ((id++))
     done
     echo "$id"
