@@ -90,7 +90,7 @@ su - postgres -c "psql -d ${DB_NAME} -tAc \
   \"SELECT 1 FROM information_schema.tables WHERE table_name = 'lening'\"" \
   | grep -q 1 || \
   su - postgres -c "psql -d ${DB_NAME} -f ${APP_DIR}/repo/database/schema.sql"
-  
+
 ###############################################################################
 # 7. Backend dependencies (prod-only)  
 ###############################################################################
@@ -116,13 +116,24 @@ cp -r "$APP_DIR/repo/frontend/build"/* /var/www/html/
 
 # Optioneel: eenvoudige reverse-proxy zodat /api traffic naar backend gaat
 cat >/etc/nginx/conf.d/leningen-app.conf <<'NGINX'
-location /api/ {
-    proxy_pass http://127.0.0.1:3000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
+server {
+    listen 80;
+    server_name _;
+
+    # serveer je SPA
+    root /var/www/html;
+    try_files $uri /index.html;
+
+    # proxy /api/* naar je backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
 }
 NGINX
-nginx -t && systemctl reload nginx
+
+ nginx -t && systemctl reload nginx
 
 ###############################################################################
 # 10. Cron/backup placeholder
@@ -138,7 +149,15 @@ log "11. PM2 installeren & backend starten…"
 if ! command -v pm2 >/dev/null; then npm install -g pm2; fi
 pm2 startup systemd -u root --hp /root --silent
 cd "$APP_DIR/repo/backend"
-pm2 start index.js --name leningen-backend --time
+ # kijk eerst welk bestand er écht is
+ if [ -f index.js ]; then
+  pm2 start index.js --name leningen-backend --time
+ elif [ -f server.js ]; then
+  pm2 start server.js --name leningen-backend --time
+ else
+  # of via npm-script
+  pm2 start npm --name leningen-backend -- run start
+ fi
 pm2 save
 
 ###############################################################################
