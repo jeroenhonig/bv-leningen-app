@@ -1,10 +1,10 @@
 #!/bin/bash
 # Script voor het aanmaken van een Alpine Linux LXC container voor BV Leningen App
-# Werkt in een Proxmox-cluster
+# Uitvoeren op een Proxmox-node (werkt in een cluster)
 
 set -euxo pipefail
 
-# Functie om het eerstvolgende vrije CTID te bepalen op cluster-niveau
+# Functie om het eerstvolgende vrije CTID te bepalen binnen de hele cluster
 get_next_ctid() {
     local id=100
     local used_ids
@@ -15,10 +15,10 @@ get_next_ctid() {
     echo "$id"
 }
 
-# Bepaal vrij CTID via cluster
+# Bepaal automatisch het eerstvolgende vrije CTID
 CTID="$(get_next_ctid)"
 
-# Instellingen
+# Configuratie
 HOSTNAME=${1:-leningen-app}
 INITIAL_MEM=2048
 FINAL_MEM=512
@@ -39,7 +39,7 @@ echo "Schijfruimte: $DISK GB"
 echo "IP-configuratie: $IP_CONFIG"
 echo "Netwerk bridge: $BRIDGE"
 
-# Controleer of Alpine template beschikbaar is
+# Controleer of Alpine template aanwezig is
 TEMPLATE_PATH=$(pveam list local | grep -o "local:vztmpl/alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" | sort -V | tail -n1)
 
 if [ -z "$TEMPLATE_PATH" ]; then
@@ -50,7 +50,7 @@ if [ -z "$TEMPLATE_PATH" ]; then
     TEMPLATE_PATH="local:vztmpl/$TEMPLATE_ID"
 fi
 
-# Controleer alsnog lokaal of container al bestaat
+# Voor de zekerheid: controleer of container lokaal bestaat
 if pct list | awk 'NR>1 {print $1}' | grep -qw "$CTID"; then
     echo "Container $CTID bestaat al op deze node. Kies een ander ID of verwijder de container."
     exit 1
@@ -67,12 +67,14 @@ pct create "$CTID" "$TEMPLATE_PATH" \
     --password "$PASSWORD" \
     --net0 "name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG"
 
+# Start container
 echo "Container starten..."
 pct start "$CTID"
 
 echo "Wachten tot container is opgestart..."
 sleep 10
 
+# Setup script uitvoeren
 echo "Setup script downloaden en uitvoeren..."
 pct exec "$CTID" -- ash -c "
   apk add curl &&
@@ -81,9 +83,11 @@ pct exec "$CTID" -- ash -c "
   ash /root/setup.sh
 "
 
+# Resources terugschakelen
 echo "Containerresources terugschalen naar cores=$FINAL_CORES en geheugen=${FINAL_MEM}MB..."
 pct set "$CTID" --cores "$FINAL_CORES" --memory "$FINAL_MEM"
 
+# IP-adres ophalen
 IP_ADDRESS=$(pct exec "$CTID" -- ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
 
 echo "------------------------------------"
