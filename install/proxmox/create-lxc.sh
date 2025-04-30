@@ -1,19 +1,21 @@
 #!/bin/bash
 # Script voor het aanmaken van een Alpine Linux LXC container voor BV Leningen App
-# Uitvoeren op de Proxmox host
+# Uitvoeren op de Proxmox host (ook binnen cluster)
 
 set -euxo pipefail
 
-# Functie om eerstvolgende vrije CTID te bepalen
+# Functie om eerstvolgende vrije CTID te bepalen op de lokale node
 get_next_ctid() {
     local id=100
-    while pct list | awk 'NR>1 {print $1}' | grep -qw "$id"; do
+    local node
+    node="$(hostname)"
+    while pct list | awk -v node="$node" 'NR>1 && $2 == node {print $1}' | grep -qw "$id"; do
         ((id++))
     done
     echo "$id"
 }
 
-# Forceer gebruik van automatisch gekozen CTID (altijd veilig, ook bij wget | bash)
+# Forceer gebruik van automatisch gekozen CTID (werkt ook met wget | bash)
 CTID="$(get_next_ctid)"
 
 # Configuratie
@@ -48,9 +50,9 @@ if [ -z "$TEMPLATE_PATH" ]; then
     TEMPLATE_PATH="local:vztmpl/$TEMPLATE_ID"
 fi
 
-# Voor de zekerheid: check nogmaals of container bestaat
-if pct list | awk 'NR>1 {print $1}' | grep -qw "$CTID"; then
-    echo "Container $CTID bestaat al. Kies een ander ID of verwijder de bestaande container."
+# Controleer opnieuw lokaal of container bestaat
+if pct list | awk -v node="$(hostname)" 'NR>1 && $2 == node {print $1}' | grep -qw "$CTID"; then
+    echo "Container $CTID bestaat al op deze node. Kies een ander ID of verwijder de bestaande container."
     exit 1
 fi
 
