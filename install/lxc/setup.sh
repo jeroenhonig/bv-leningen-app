@@ -55,6 +55,7 @@ rc-service dcron start
 
 echo "11. Services starten..."
 npm install -g pm2
+ln -s "$(which pm2)" /usr/local/bin/pm2 || true
 export PATH="$PATH:$(npm bin -g)"
 cd /opt/leningen-app/repo/backend
 pm2 start index.js --name leningen-backend
