@@ -77,32 +77,20 @@ fi
 ###############################################################################
 # 6. Database configureren
 ###############################################################################
-echo "6. Database configureren..."
+log "6. Database configureren…"
 
-# ---- rol & database idempotent aanmaken ------------------------------------
-su - postgres -c "psql -v ON_ERROR_STOP=1 <<'SQL'
-DO $$
-BEGIN
-  ---------------------------------------------------------------------------
-  -- 6a. ROLE ---------------------------------------------------------------
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'leningen_user') THEN
-    CREATE ROLE leningen_user LOGIN PASSWORD 'leningen_pass';
-  END IF;
+# 6a. Role aanmaken (negeer “already exists”)
+su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';\" || true"
 
-  ---------------------------------------------------------------------------
-  -- 6b. DATABASE -----------------------------------------------------------
-  IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'leningen_db') THEN
-    CREATE DATABASE leningen_db OWNER leningen_user;
-  END IF;
-END $$;
-SQL"
+# 6b. Database aanmaken (negeer “database already exists”)
+su - postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};\" || true"
 
 # ---- schema importeren – alleen als het nog niet staat ---------------------
-su - postgres -c "psql -d leningen_db -tAc \
+su - postgres -c "psql -d ${DB_NAME} -tAc \
   \"SELECT 1 FROM information_schema.tables WHERE table_name = 'lening'\"" \
   | grep -q 1 || \
-  su - postgres -c "psql -d leningen_db -f /opt/leningen-app/repo/database/schema.sql"
-
+  su - postgres -c "psql -d ${DB_NAME} -f ${APP_DIR}/repo/database/schema.sql"
+  
 ###############################################################################
 # 7. Backend dependencies (prod-only)  
 ###############################################################################
