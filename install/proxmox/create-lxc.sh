@@ -45,7 +45,8 @@ pct create $CTID $TEMPLATE_PATH \
   --password "$PASSWORD" \
   --net0 name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG \
   --unprivileged 1 \
-  --features nesting=1
+  --features nesting=1 \
+  --lock 0
 
 echo "Container starten..."
 pct start $CTID
