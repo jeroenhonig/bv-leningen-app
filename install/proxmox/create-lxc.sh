@@ -7,9 +7,9 @@ set -euxo pipefail
 # Functie om eerstvolgende vrije CTID te bepalen op de lokale node
 get_next_ctid() {
     local id=100
-    local node
-    node="$(hostname)"
-    while pct list | awk -v node="$node" 'NR>1 && $2 == node {print $1}' | grep -qw "$id"; do
+    local used_ids
+    used_ids=$(pvesh get /cluster/resources --type vm | grep -o '"vmid":[0-9]\+' | cut -d: -f2)
+    while echo "$used_ids" | grep -qw "$id"; do
         ((id++))
     done
     echo "$id"
