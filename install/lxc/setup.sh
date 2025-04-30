@@ -1,110 +1,73 @@
-#!/bin/ash
+#!/bin/sh
+# Verbeterde setup.sh voor BV Leningen App op Alpine Linux
+set -euxo pipefail
 
-export NODE_OPTIONS="--max-old-space-size=1024"
+# 1. Basis packages installeren
+apk update
+apk add --no-cache git curl bash nodejs npm postgresql17 postgresql17-contrib postgresql17-openrc nginx nginx-openrc dcron dcron-openrc
+npm install -g pm2
 
-echo "BV Leningen App installatie gestart op $(date)"
+# 2. Clone applicatie
+mkdir -p /opt/leningen-app
+cd /opt/leningen-app
+git clone https://github.com/jeroenhonig/bv-leningen-app repo
 
-echo "1. Basissysteem bijwerken..."
-apk update && apk upgrade
-
-echo "2. PostgreSQL installeren..."
-apk add postgresql17 postgresql17-contrib
-
-if [ ! -f "/var/lib/postgres/PG_VERSION" ]; then
-    su postgres -c 'initdb -D /var/lib/postgres'
-else
-    echo "PostgreSQL database directory bestaat al, overslaan..."
-fi
-
-rc-update add postgresql default
+# 3. Database initialiseren
+su - postgres -c "/usr/bin/initdb -D /var/lib/postgresql/17/data"
+rc-update add postgresql
 rc-service postgresql start
 
-echo "3. Node.js installeren..."
-apk add nodejs npm
+# 4. Database configureren
+psql -U postgres <<EOF
+CREATE USER leningen_user WITH PASSWORD 'leningen_pass';
+CREATE DATABASE leningen_db OWNER leningen_user;
+EOF
+psql -U postgres -d leningen_db < /opt/leningen-app/repo/database/schema.sql
 
-echo "4. Nginx installeren..."
-apk add nginx
-rc-update add nginx default
-
-echo "5. Applicatie clonen van GitHub..."
-mkdir -p /opt/leningen-app
-if [ ! -d "/opt/leningen-app/repo/.git" ]; then
-    git clone https://github.com/jeroenhonig/bv-leningen-app.git /opt/leningen-app/repo
-else
-    echo "Repository bestaat al, wordt overgeslagen..."
-fi
-
-echo "6. Database configureren..."
-su postgres -c 'psql -c "CREATE USER leningen_user WITH PASSWORD '\''leningen_pass'\'';"' || true
-su postgres -c 'psql -c "CREATE DATABASE leningen_db OWNER leningen_user;"' || true
-su postgres -c 'psql leningen_db -f /opt/leningen-app/repo/database/schema.sql' || true
-
-echo "7. Backend installeren..."
+# 5. Backend installeren
 cd /opt/leningen-app/repo/backend
 npm install
+pm run build
 
-echo "8. Frontend bouwen..."
+# 6. Frontend bouwen
 cd /opt/leningen-app/repo/frontend
 npm install
 npm run build
 
-echo "9. Nginx configureren..."
-mkdir -p /var/www/leningen-app
-cp -r /opt/leningen-app/repo/frontend/build/* /var/www/leningen-app/
+# 7. Nginx configureren
+mkdir -p /var/www/html
+cp -r /opt/leningen-app/repo/frontend/build/* /var/www/html/
+rc-update add nginx
+rc-service nginx start
 
-cat > /etc/nginx/http.d/leningen-app.conf <<EOF
-server {
-    listen 80;
-    server_name _;
-
-    root /var/www/leningen-app;
-    index index.html;
-
-    location /api/ {
-        proxy_pass http://localhost:3000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
-
-    location / {
-        try_files \$uri /index.html;
-    }
-}
-EOF
-
-# Fix voor dubbele default_server fout
-sed -i 's/listen 80 default_server;/listen 80;/' /etc/nginx/http.d/*.conf || true
-
-echo "10. Backup configureren..."
-apk add dcron
-rc-update add dcron default
-rc-service dcron start
-
-echo "11. Services starten..."
-apk add pm2
-npm install -g pm2
+# 8. Backend met PM2 starten
 cd /opt/leningen-app/repo/backend
-pm2 start server.js --name leningen-app
-pm2 startup openrc -u root --hp /root
+pm install
+pm run build
+pm2 start dist/index.js --name leningen-app
 pm2 save
 
-rc-service nginx restart
+# 9. PM2 autostart
+pm install pm2 -g
+pm2 startup | sh
 
-echo "12. PostgreSQL optimaliseren voor kleine container..."
-echo "shared_buffers = 64MB" >> /etc/postgresql/17/postgresql.conf
-echo "max_connections = 20" >> /etc/postgresql/17/postgresql.conf
-rc-service postgresql restart
+# 10. Cron toevoegen
+rc-update add dcron
+rc-service dcron start
 
+# 11. PostgreSQL optimalisatie voor kleine container
+POSTGRES_CONF="/var/lib/postgresql/17/data/postgresql.conf"
+if [ -f "$POSTGRES_CONF" ]; then
+  echo "shared_buffers = 64MB" >> "$POSTGRES_CONF"
+  echo "work_mem = 1MB" >> "$POSTGRES_CONF"
+  rc-service postgresql restart
+fi
+
+# 12. Installatie voltooid
 echo "=============================================="
 echo "BV Leningen App Installatie Voltooid!"
-echo "=============================================="
 echo "Database naam: leningen_db"
 echo "Database gebruiker: leningen_user"
 echo "Database wachtwoord: leningen_pass"
-echo "Web URL: http://$(ip -4 a show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)"
-echo ""
-echo "Deze gegevens zijn opgeslagen in: /root/leningen-app-install.log"
+echo "Web URL: http://\$(hostname -i)"
 echo "=============================================="
