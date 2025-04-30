@@ -15,22 +15,20 @@ echo "BV Leningen App update gestart op $(date)"
 
 # 1. Maak backup
 echo "1. Database backup maken..."
-/opt/backups/backup.sh
+"$BACKUP_DIR/backup.sh"
 
 # 2. Repository updaten
 echo "2. Code updaten van GitHub..."
 cd "$APP_DIR/repo"
 git fetch origin
-# Sla lokale wijzigingen op
-git stash
-# Update naar de nieuwste versie
+git stash || true
 git pull origin main
 
 # 3. Backend updaten
 echo "3. Backend updaten..."
 cd "$APP_DIR/repo/backend"
-npm install --production
-pm2 stop leningen-app
+npm install
+pm2 stop leningen-backend
 
 # 4. Frontend updaten
 echo "4. Frontend updaten..."
@@ -41,8 +39,8 @@ npm run build
 # 5. Services herstarten
 echo "5. Services herstarten..."
 cd "$APP_DIR/repo/backend"
-pm2 start leningen-app
-rc-service nginx restart
+pm2 start leningen-backend
+pm2 save
 
 # Update voltooid
 echo "=============================================="

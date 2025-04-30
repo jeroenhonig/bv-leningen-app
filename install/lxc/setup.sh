@@ -12,9 +12,14 @@ apt-get update && apt-get upgrade -y
 # 2. PostgreSQL installeren
 echo "2. PostgreSQL installeren..."
 apt-get install -y postgresql postgresql-contrib
-su - postgres -c 'initdb -D /var/lib/postgresql/data'
-systemctl enable postgresql
-systemctl start postgresql
+
+# PostgreSQL wordt in een LXC vaak automatisch geïnitieerd
+# maar we forceren het indien nodig:
+PGDATA=$(find /etc/postgresql -name postgresql.conf | head -n1 | xargs dirname)
+[ -d "$PGDATA" ] || su - postgres -c 'initdb -D /var/lib/postgresql/data'
+
+# Start PostgreSQL indien nog niet draait
+pg_ctlcluster $(pg_lsclusters | awk 'NR==2{print $1, $2}') start || true
 
 # 3. Node.js installeren
 echo "3. Node.js installeren..."
@@ -25,7 +30,6 @@ apt-get install -y nodejs
 # 4. Nginx installeren
 echo "4. Nginx installeren..."
 apt-get install -y nginx
-systemctl enable nginx
 
 # 5. Git & app clonen
 echo "5. Applicatie clonen van GitHub..."
@@ -61,24 +65,23 @@ cp -r /opt/leningen-app/repo/frontend/build/* /var/www/html/
 # 10. Backup (cron) installeren
 echo "10. Backup configureren..."
 apt-get install -y cron
-systemctl enable cron
-systemctl start cron
+service cron start
 
-# 11. Services starten
-echo "11. Services starten..."
+# 11. PM2 starten
+echo "11. PM2 installeren en starten..."
 npm install -g pm2
 ln -sf "$(command -v pm2)" /usr/local/bin/pm2 || true
 export PATH="$PATH:$(npm bin -g)"
 cd /opt/leningen-app/repo/backend
 pm2 start index.js --name leningen-backend
 pm2 save
-systemctl restart nginx
 
 # 12. PostgreSQL optimaliseren
 echo "12. PostgreSQL optimaliseren..."
-echo "shared_buffers = 64MB" >> /etc/postgresql/*/main/postgresql.conf
-echo "work_mem = 4MB" >> /etc/postgresql/*/main/postgresql.conf
-systemctl restart postgresql
+PGCONF=$(find /etc/postgresql -name postgresql.conf | head -n1)
+echo "shared_buffers = 64MB" >> "$PGCONF"
+echo "work_mem = 4MB" >> "$PGCONF"
+pg_ctlcluster $(pg_lsclusters | awk 'NR==2{print $1, $2}') restart || true
 
 # 13. Health check uitvoeren
 echo "13. Health check uitvoeren..."
