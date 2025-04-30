@@ -65,6 +65,14 @@ echo "shared_buffers = 64MB" >> /var/lib/postgresql/17/data/postgresql.conf
 echo "work_mem = 4MB" >> /var/lib/postgresql/17/data/postgresql.conf
 rc-service postgresql restart
 
+echo "13. Health check uitvoeren..."
+if curl --fail http://localhost/api/ping >/dev/null 2>&1; then
+  echo "✅ Backend is online"
+else
+  echo "❌ Backend is NIET bereikbaar - controleer of PM2 draait of bekijk de logs"
+  echo "Gebruik bijvoorbeeld: pm2 logs of kijk in /opt/leningen-app/repo/backend"
+fi
+
 echo "=============================================="
 echo "BV Leningen App Installatie Voltooid!"
 echo "=============================================="
