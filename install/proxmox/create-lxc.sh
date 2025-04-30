@@ -2,7 +2,7 @@
 # Script voor het aanmaken van een Alpine Linux LXC container voor BV Leningen App
 # Uitvoeren op de Proxmox host
 
-set -euo pipefail
+set -euxo pipefail
 
 # Functie om eerstvolgende vrije CTID te bepalen
 get_next_ctid() {
@@ -13,22 +13,19 @@ get_next_ctid() {
     echo "$id"
 }
 
-# Configuratie met betrouwbare CTID-keuze
-if [ -n "${1:-}" ]; then
-  CTID="$1"
-else
-  CTID=$(get_next_ctid)
-fi
+# Forceer gebruik van automatisch gekozen CTID (altijd veilig, ook bij wget | bash)
+CTID="$(get_next_ctid)"
 
-HOSTNAME=${2:-leningen-app}         # Hostname
-INITIAL_MEM=2048                    # Tijdelijk geheugen (MB)
-FINAL_MEM=512                       # Geheugen na installatie (MB)
-INITIAL_CORES=4                     # Tijdelijk aantal cores
-FINAL_CORES=1                       # Cores na installatie
-DISK=${3:-8}                         # Disk size in GB
-PASSWORD="$(openssl rand -base64 12)" # Root wachtwoord
-IP_CONFIG=${4:-dhcp}                # IP-configuratie
-BRIDGE=${5:-vmbr0}                  # Netwerk bridge
+# Configuratie
+HOSTNAME=${1:-leningen-app}
+INITIAL_MEM=2048
+FINAL_MEM=512
+INITIAL_CORES=4
+FINAL_CORES=1
+DISK=${2:-8}
+PASSWORD="$(openssl rand -base64 12)"
+IP_CONFIG=${3:-dhcp}
+BRIDGE=${4:-vmbr0}
 GITHUB_REPO="jeroenhonig/bv-leningen-app"
 
 echo "BV Leningen App installatie starten..."
@@ -40,7 +37,7 @@ echo "Schijfruimte: $DISK GB"
 echo "IP-configuratie: $IP_CONFIG"
 echo "Netwerk bridge: $BRIDGE"
 
-# Controleer of Alpine template bestaat
+# Controleer of Alpine template beschikbaar is
 TEMPLATE_PATH=$(pveam list local | grep -o "local:vztmpl/alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" | sort -V | tail -n1)
 
 if [ -z "$TEMPLATE_PATH" ]; then
@@ -51,13 +48,13 @@ if [ -z "$TEMPLATE_PATH" ]; then
     TEMPLATE_PATH="local:vztmpl/$TEMPLATE_ID"
 fi
 
-# Controleer of container al bestaat
+# Voor de zekerheid: check nogmaals of container bestaat
 if pct list | awk 'NR>1 {print $1}' | grep -qw "$CTID"; then
     echo "Container $CTID bestaat al. Kies een ander ID of verwijder de bestaande container."
     exit 1
 fi
 
-# Maak de container aan
+# Container aanmaken
 echo "Alpine Linux container ($CTID) aanmaken..."
 pct create "$CTID" "$TEMPLATE_PATH" \
     --hostname "$HOSTNAME" \
@@ -68,15 +65,12 @@ pct create "$CTID" "$TEMPLATE_PATH" \
     --password "$PASSWORD" \
     --net0 "name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG"
 
-# Start de container
 echo "Container starten..."
 pct start "$CTID"
 
-# Wacht tot de container volledig is opgestart
 echo "Wachten tot container is opgestart..."
 sleep 10
 
-# Download en voer het setup script uit in de container
 echo "Setup script downloaden en uitvoeren..."
 pct exec "$CTID" -- ash -c "
   apk add curl &&
@@ -85,12 +79,11 @@ pct exec "$CTID" -- ash -c "
   ash /root/setup.sh
 "
 
-# Breng resources terug naar productie-instellingen
 echo "Containerresources terugschalen naar cores=$FINAL_CORES en geheugen=${FINAL_MEM}MB..."
 pct set "$CTID" --cores "$FINAL_CORES" --memory "$FINAL_MEM"
 
-# Print informatie
 IP_ADDRESS=$(pct exec "$CTID" -- ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+
 echo "------------------------------------"
 echo "BV Leningen App installatie voltooid!"
 echo "------------------------------------"
