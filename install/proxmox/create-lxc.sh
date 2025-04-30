@@ -1,6 +1,11 @@
 #!/bin/bash
 set -eux
 
+# Controleer en installeer jq indien nodig
+if ! command -v jq &> /dev/null; then
+    apt-get update && apt-get install -y jq
+fi
+
 get_next_ctid() {
   used_ids=$(pvesh get /cluster/resources --type vm --output-format json | jq -r '.[] | select(.vmid) | .vmid')
   for id in $(seq 100 999); do
@@ -33,9 +38,9 @@ echo "Tijdelijk CPU cores: $INITIAL_CORES (later $FINAL_CORES)"
 echo "Schijfruimte: $DISK GB"
 echo "IP-configuratie: $IP_CONFIG"
 echo "Netwerk bridge: $BRIDGE"
-
 echo "Debian template: $TEMPLATE_PATH"
 
+# Container aanmaken zonder --lock 0 parameter
 pct create $CTID $TEMPLATE_PATH \
   --hostname $HOSTNAME \
   --memory $INITIAL_MEM \
@@ -236,12 +241,14 @@ else
   echo \"❌ Geen response van backend - check 'pm2 logs'\"
 fi
 
-###############################################################################
-# 14. Set root password (als dit nodig is)
-###############################################################################
-# NEW_ROOT_PASS=\"\$(openssl rand -base64 12)\"
-# echo \"root:\${NEW_ROOT_PASS}\" | chpasswd
-# echo -e \"\n🔑 Root password is: \${NEW_ROOT_PASS}\n\"
+# TTY autologin configureren
+mkdir -p /etc/systemd/system/getty@tty1.service.d/
+cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<EOL
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
+EOL
+systemctl daemon-reload
 
 echo -e \"\n✅ Installatie voltooid. Web: http://\$(hostname -I | awk '{print \$1}') !\"
 EOF"
@@ -254,20 +261,8 @@ echo "Bronnen aanpassen naar definitieve waarden..."
 pct resize $CTID rootfs ${DISK}G
 pct set $CTID --memory $FINAL_MEM --cores $FINAL_CORES
 
-# Installatie voltooid! Je kunt inloggen op de container met:
 echo "Installatie voltooid! Je kunt inloggen op de container met:"
 echo "pct enter $CTID"
 echo "Root wachtwoord is: $PASSWORD"
-
-# Configuratie voor automatische console login zonder wachtwoord
-echo "Console configureren voor login zonder wachtwoord..."
-pct exec $CTID -- bash -c "
-  # TTY autologin configureren
-  mkdir -p /etc/systemd/system/getty@tty1.service.d/
-  cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<EOL
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
-EOL
-  systemctl daemon-reload
-"
+echo ""
+echo "De webinterface is beschikbaar op: http://$(pct exec $CTID -- hostname -I | tr -d '\r\n')"
