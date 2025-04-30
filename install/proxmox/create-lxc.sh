@@ -45,8 +45,7 @@ pct create $CTID $TEMPLATE_PATH \
   --password "$PASSWORD" \
   --net0 name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG \
   --unprivileged 1 \
-  --features nesting=1 \
-  --lock 0
+  --features nesting=1
 
 echo "Container starten..."
 pct start $CTID
@@ -255,6 +254,20 @@ echo "Bronnen aanpassen naar definitieve waarden..."
 pct resize $CTID rootfs ${DISK}G
 pct set $CTID --memory $FINAL_MEM --cores $FINAL_CORES
 
+# Installatie voltooid! Je kunt inloggen op de container met:
 echo "Installatie voltooid! Je kunt inloggen op de container met:"
 echo "pct enter $CTID"
 echo "Root wachtwoord is: $PASSWORD"
+
+# Configuratie voor automatische console login zonder wachtwoord
+echo "Console configureren voor login zonder wachtwoord..."
+pct exec $CTID -- bash -c "
+  # TTY autologin configureren
+  mkdir -p /etc/systemd/system/getty@tty1.service.d/
+  cat > /etc/systemd/system/getty@tty1.service.d/override.conf <<EOL
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
+EOL
+  systemctl daemon-reload
+"
