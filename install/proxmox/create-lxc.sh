@@ -8,7 +8,16 @@ set -euxo pipefail
 get_next_ctid() {
     local id=100
     local used_ids
-    used_ids=$(pvesh get /cluster/resources --type vm | awk '{print $1}' | cut -d/ -f2 | grep -E '^[0-9]+$')
+
+    # Probeer clusterbrede CTID-lijst
+    used_ids=$(pvesh get /cluster/resources --type vm 2>/dev/null | awk '{print $1}' | cut -d/ -f2 | grep -E '^[0-9]+$')
+
+    # Als dat niets oplevert, gebruik lokale containerlijst
+    if [ -z "$used_ids" ]; then
+        echo "⚠️  Waarschuwing: geen clusterbrede containers gevonden, val terug op lokale lijst"
+        used_ids=$(pct list | awk 'NR>1 {print $1}')
+    fi
+
     while echo "$used_ids" | grep -qw "$id"; do
         ((id++))
     done
