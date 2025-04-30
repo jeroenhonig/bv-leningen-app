@@ -16,24 +16,26 @@ get_next_ctid() {
 }
 
 # Configuratie
-CTID=${1:-$(get_next_ctid)}     # Container ID, standaard eerstvolgend vrij
-HOSTNAME=${2:-leningen-app}     # Hostname, standaard leningen-app
-MEM=${3:-512}                   # Geheugen in MB, standaard 512
-DISK=${4:-8}                    # Disk size in GB, standaard 8GB
-CORES=${5:-1}                   # CPU cores, standaard 1
-PASSWORD="$(openssl rand -base64 12)" # Willekeurig wachtwoord
-IP_CONFIG=${6:-dhcp}            # IP configuratie, standaard dhcp
-BRIDGE=${7:-vmbr0}              # Network bridge, standaard vmbr0
+CTID=${1:-$(get_next_ctid)}         # Container ID
+HOSTNAME=${2:-leningen-app}         # Hostname
+INITIAL_MEM=2048                    # Tijdelijk geheugen (MB)
+FINAL_MEM=512                       # Geheugen na installatie (MB)
+INITIAL_CORES=4                     # Tijdelijk aantal cores
+FINAL_CORES=1                       # Cores na installatie
+DISK=${3:-8}                         # Disk size in GB
+PASSWORD="$(openssl rand -base64 12)" # Root wachtwoord
+IP_CONFIG=${4:-dhcp}                # IP-configuratie
+BRIDGE=${5:-vmbr0}                  # Netwerk bridge
 GITHUB_REPO="jeroenhonig/bv-leningen-app"
 
 echo "BV Leningen App installatie starten..."
 echo "Container ID: $CTID"
 echo "Hostname: $HOSTNAME"
-echo "Geheugen: $MEM MB"
+echo "Tijdelijk geheugen: $INITIAL_MEM MB (later $FINAL_MEM MB)"
+echo "Tijdelijk CPU cores: $INITIAL_CORES (later $FINAL_CORES)"
 echo "Schijfruimte: $DISK GB"
-echo "CPU cores: $CORES"
-echo "IP configuratie: $IP_CONFIG"
-echo "Network bridge: $BRIDGE"
+echo "IP-configuratie: $IP_CONFIG"
+echo "Netwerk bridge: $BRIDGE"
 
 # Controleer of Alpine template bestaat
 TEMPLATE_PATH=$(pveam list local | grep -o "local:vztmpl/alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" | sort -V | tail -n1)
@@ -56,9 +58,9 @@ fi
 echo "Alpine Linux container ($CTID) aanmaken..."
 pct create "$CTID" "$TEMPLATE_PATH" \
     --hostname "$HOSTNAME" \
-    --memory "$MEM" \
+    --memory "$INITIAL_MEM" \
     --swap 512 \
-    --cores "$CORES" \
+    --cores "$INITIAL_CORES" \
     --rootfs "local-lvm:$DISK" \
     --password "$PASSWORD" \
     --net0 "name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG"
@@ -73,10 +75,19 @@ sleep 10
 
 # Download en voer het setup script uit in de container
 echo "Setup script downloaden en uitvoeren..."
-pct exec "$CTID" -- ash -c "apk add curl && curl -s https://raw.githubusercontent.com/$GITHUB_REPO/main/install/lxc/setup.sh > /root/setup.sh && chmod +x /root/setup.sh && ash /root/setup.sh"
+pct exec "$CTID" -- ash -c "
+  apk add curl &&
+  curl -s https://raw.githubusercontent.com/$GITHUB_REPO/main/install/lxc/setup.sh > /root/setup.sh &&
+  chmod +x /root/setup.sh &&
+  ash /root/setup.sh
+"
+
+# Breng resources terug naar productie-instellingen
+echo "Containerresources terugschalen naar cores=$FINAL_CORES en geheugen=${FINAL_MEM}MB..."
+pct set "$CTID" --cores "$FINAL_CORES" --memory "$FINAL_MEM"
 
 # Print informatie
-IP_ADDRESS=$(pct exec "$CTID" -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+IP_ADDRESS=$(pct exec "$CTID" -- ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
 echo "------------------------------------"
 echo "BV Leningen App installatie voltooid!"
 echo "------------------------------------"
