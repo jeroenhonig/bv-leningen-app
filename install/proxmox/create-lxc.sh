@@ -14,7 +14,7 @@ get_next_ctid() {
 }
 
 # Configuratie
-CTID=${1:-$(get_next_ctid)}         # Container ID
+CTID=${1:-$(get_next_ctid)}         # Container ID (automatisch als niet opgegeven)
 HOSTNAME=${2:-leningen-app}         # Hostname
 INITIAL_MEM=2048                    # Tijdelijk geheugen (MB)
 FINAL_MEM=512                       # Geheugen na installatie (MB)
@@ -47,7 +47,7 @@ if [ -z "$TEMPLATE_PATH" ]; then
 fi
 
 # Controleer of container al bestaat
-if pct list | grep -q "^$CTID\s"; then
+if pct list | awk 'NR>1 {print $1}' | grep -qw "$CTID"; then
     echo "Container $CTID bestaat al. Kies een ander ID of verwijder de bestaande container."
     exit 1
 fi
