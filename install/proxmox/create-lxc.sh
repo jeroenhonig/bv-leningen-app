@@ -13,8 +13,13 @@ get_next_ctid() {
     echo "$id"
 }
 
-# Configuratie
-CTID=${1:-$(get_next_ctid)}         # Container ID (automatisch als niet opgegeven)
+# Configuratie met betrouwbare CTID-keuze
+if [ -n "${1:-}" ]; then
+  CTID="$1"
+else
+  CTID=$(get_next_ctid)
+fi
+
 HOSTNAME=${2:-leningen-app}         # Hostname
 INITIAL_MEM=2048                    # Tijdelijk geheugen (MB)
 FINAL_MEM=512                       # Geheugen na installatie (MB)
@@ -27,7 +32,7 @@ BRIDGE=${5:-vmbr0}                  # Netwerk bridge
 GITHUB_REPO="jeroenhonig/bv-leningen-app"
 
 echo "BV Leningen App installatie starten..."
-echo "Container ID: $CTID"
+echo "Gekozen Container ID: $CTID"
 echo "Hostname: $HOSTNAME"
 echo "Tijdelijk geheugen: $INITIAL_MEM MB (later $FINAL_MEM MB)"
 echo "Tijdelijk CPU cores: $INITIAL_CORES (later $FINAL_CORES)"
