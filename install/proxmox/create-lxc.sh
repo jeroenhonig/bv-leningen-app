@@ -11,7 +11,7 @@ get_next_ctid() {
     used_ids=$(pvesh get /cluster/resources --type vm 2>/dev/null | awk '{print $1}' | cut -d/ -f2 | grep -E '^[0-9]+$' || true)
 
     if [ -z "$used_ids" ]; then
-        echo "⚠️  Geen clusterbrede VM-data, val terug op lokale lijst"
+        echo "⚠️  Geen clusterbrede VM-data, val terug op lokale lijst" >&2
         used_ids=$(pct list | awk 'NR>1 {print $1}')
     fi
 
