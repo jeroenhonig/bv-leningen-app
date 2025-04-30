@@ -151,12 +151,12 @@ pm2 startup systemd -u root --hp /root --silent
 cd "$APP_DIR/repo/backend"
  # kijk eerst welk bestand er écht is
  if [ -f index.js ]; then
-  pm2 start index.js --name leningen-backend --time
+  pm2 start index.js --name leningen-backend --time --update-env
  elif [ -f server.js ]; then
-  pm2 start server.js --name leningen-backend --time
+  pm2 start server.js --name leningen-backend --time --update-env
  else
   # of via npm-script
-  pm2 start npm --name leningen-backend -- run start
+  pm2 start npm --name leningen-backend -- run start --update-env
  fi
 pm2 save
 
