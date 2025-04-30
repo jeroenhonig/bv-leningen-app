@@ -15,6 +15,7 @@ get_next_ctid() {
     echo "$id"
 }
 
+
 # Bepaal vrij CTID via cluster
 CTID="$(get_next_ctid)"
 
