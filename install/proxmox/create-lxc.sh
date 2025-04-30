@@ -3,30 +3,16 @@
 
 set -euxo pipefail
 
-# Functie om het eerstvolgende vrije CTID te bepalen (QEMU + LXC, met clusterfallback)
+# Bepaal het eerstvolgende vrije CTID binnen cluster (100–999)
 get_next_ctid() {
-    local id=100
-    local used_ids
-
-    # Clusterbreed ophalen van gebruikte ID's (werkt alleen als pvesh beschikbaar is)
-    if pvesh get /cluster/resources --type vm &>/dev/null; then
-        used_ids=$(pvesh get /cluster/resources --type vm \
-            | awk -F/ '/^(lxc|qemu)\// {print $2}' \
-            | grep -E '^[0-9]+$' \
-            | sort -n | uniq)
-    else
-        echo "⚠️  Geen toegang tot clusterdata, val terug op lokale lijst" >&2
-        used_ids=$( (qm list | awk 'NR>1 {print $1}'; pct list | awk 'NR>1 {print $1}') | sort -n | uniq )
-    fi
-
-    while echo "$used_ids" | grep -qw "$id"; do
-        ((id++))
-    done
-
-    echo "$id"
+    comm -23 <(seq 100 999) <(
+        pvesh get /cluster/resources --type vm --output-format json \
+        | jq -r '.[] | select(.vmid) | .vmid' \
+        | sort -n | uniq
+    ) | head -n1
 }
 
-CTID=$(get_next_ctid)
+CTID="$(get_next_ctid)"
 HOSTNAME=${1:-leningen-app}
 INITIAL_MEM=2048
 FINAL_MEM=512
@@ -47,25 +33,28 @@ echo "Schijfruimte: $DISK GB"
 echo "IP-configuratie: $IP_CONFIG"
 echo "Netwerk bridge: $BRIDGE"
 
-# Zoek of Alpine template al lokaal beschikbaar is
-TEMPLATE_PATH=$(pveam list local | grep -o "local:vztmpl/alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" | sort -V | tail -n1)
+# Vind meest recente Alpine-template
+TEMPLATE_PATH=$(pveam list local \
+  | grep -o "local:vztmpl/alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" \
+  | sort -V | tail -n1)
 
-# Download indien nodig
 if [ -z "$TEMPLATE_PATH" ]; then
     echo "Alpine template niet gevonden, wordt gedownload..."
     pveam update
-    TEMPLATE_ID=$(pveam available --section system | grep alpine | grep -o "alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" | sort -V | tail -n1)
+    TEMPLATE_ID=$(pveam available --section system \
+        | grep alpine \
+        | grep -o "alpine-[0-9]\+\.[0-9]\+-default_[0-9]\+_amd64\.tar\.xz" \
+        | sort -V | tail -n1)
     pveam download local "$TEMPLATE_ID"
     TEMPLATE_PATH="local:vztmpl/$TEMPLATE_ID"
 fi
 
-# Check of CTID al bestaat
+# Check lokaal of ID al bestaat (fail-safe)
 if pct list | awk 'NR>1 {print $1}' | grep -qw "$CTID"; then
-    echo "❌ Container $CTID bestaat al. Stop of verwijder deze eerst."
+    echo "❌ Container $CTID bestaat al op deze node."
     exit 1
 fi
 
-# Container aanmaken
 echo "Alpine Linux container ($CTID) aanmaken..."
 pct create "$CTID" "$TEMPLATE_PATH" \
     --hostname "$HOSTNAME" \
